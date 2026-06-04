@@ -1,10 +1,12 @@
 {
   "name": "pi-scoped-models-extra-info",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Pi coding agent extension — interactive table of your scoped models with pricing, context window, thinking levels, modalities, and coding benchmarks",
   "license": "MIT",
   "author": "Koen de Jager",
-  "keywords": ["pi-package"],
+  "keywords": [
+    "pi-package"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kdejaeger/pi-scoped-models-extra-info.git"
@@ -14,7 +16,9 @@
   },
   "homepage": "https://github.com/kdejaeger/pi-scoped-models-extra-info#readme",
   "pi": {
-    "extensions": ["index.ts"],
+    "extensions": [
+      "index.ts"
+    ],
     "image": "https://raw.githubusercontent.com/kdejaeger/pi-scoped-models-extra-info/main/screenshot.png"
   },
   "peerDependencies": {
