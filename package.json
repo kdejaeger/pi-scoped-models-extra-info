@@ -14,7 +14,8 @@
   },
   "homepage": "https://github.com/kdejaeger/pi-scoped-models-extra-info#readme",
   "pi": {
-    "extensions": ["index.ts"]
+    "extensions": ["index.ts"],
+    "image": "https://raw.githubusercontent.com/kdejaeger/pi-scoped-models-extra-info/main/screenshot.png"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",

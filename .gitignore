@@ -2,3 +2,9 @@ node_modules/
 .cache/
 tmp/
 *.log
+
+# IDE
+.idea/
+
+# Pi local config
+.pi/
