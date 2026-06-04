@@ -2,6 +2,7 @@
 
 > Interactive table of your pi coding agent's scoped models — pricing, context window, thinking levels, modalities, and optional coding benchmarks.
 
+![Screenshot](screenshot.png)
 
 ## Features
 
@@ -95,6 +96,7 @@ The table displays only the models you have **enabled/scoped** in your pi `setti
 pi-scoped-models-extra-info/
 ├── index.ts              # Extension source
 ├── package.json          # Pi package manifest
+├── screenshot.png         # Table screenshot
 ├── LICENSE               # MIT
 └── README.md             # This file
 ```
