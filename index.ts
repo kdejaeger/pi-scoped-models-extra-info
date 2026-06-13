@@ -22,6 +22,14 @@ import { readFileSync, writeFileSync, mkdirSync, statSync } from "fs";
 import { homedir } from "os";
 
 // ── Config ─────────────────────────────────────────────────────────────────
+//
+// The coding index column is powered by the Artificial Analysis API:
+//   https://artificialanalysis.ai/api/v2/data/llms/models
+//
+// When AA_API_KEY is set, the extension fetches AI coding benchmark scores
+// and caches them locally for 24 hours. Without the key, the coding column
+// is simply absent — everything else works the same.
+//
 
 const AA_API_KEY = process.env.AA_API_KEY || "";
 const AA_API_URL = "https://artificialanalysis.ai/api/v2/data/llms/models";
@@ -49,67 +57,70 @@ function getSlug(model: { provider: string; id: string; name: string }): string 
 	return `${model.provider}/${shortId}`;
 }
 
-const EXTENDED_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"];
+/** Split "provider/modelId" into [provider, modelId]. Returns ["", text] when no slash found. */
+function splitPath(path: string): [string, string] {
+	const slash = path.indexOf("/");
+	if (slash < 0) return ["", path];
+	return [path.slice(0, slash), path.slice(slash + 1)];
+}
 
-/**
- * Normalize a provider name by stripping common artifacts (hyphens, "-" at end, etc.)
- * so we can match across pi's internal provider naming and OpenRouter sub-provider prefixes.
- */
+/** Strip hyphens and lowercase so we can match pi provider names against AA creator slugs. */
 function normalizeProvider(name: string): string {
 	return name.replace(/-/g, "").toLowerCase();
 }
 
 /**
- * Resolve thinking levels for a model, falling back to the native model's
- * thinkingLevelMap when the model itself doesn't have one (common for
- * OpenRouter proxies that inherit the native model's thinking capabilities).
+ * Resolve the thinking levels a model supports.
+ *
+ * Some models (especially OpenRouter proxies) don't advertise their
+ * thinking capabilities directly — they inherit a `thinkingLevelMap`
+ * from the native model they proxy. This function tracks it down:
+ *
+ *   1. If the model already has a thinkingLevelMap, use it directly.
+ *   2. Otherwise, extract the provider and short name from the model
+ *      ID (e.g. "google/gemma-4-31b-it" → provider="google",
+ *      short="gemma-4-31b-it") and search pi's model registry for
+ *      a native model with that name that does have a thinkingLevelMap.
+ *   3. Try the provider as-is, then a normalized version (no hyphens),
+ *      then all other providers as a last resort.
  */
 function resolveThinkingLevels(model: { reasoning: boolean; id: string; thinkingLevelMap?: Record<string, string | null> }): string[] {
-	// If the model already has a thinkingLevelMap, use it directly
 	if (model.thinkingLevelMap) {
 		return getSupportedThinkingLevels(model as any);
 	}
-	// Try to find the native model from the model ID
-	// e.g., model.id = "google/gemma-4-31b-it" → native provider "google", short name "gemma-4-31b-it"
+
 	const slashIdx = model.id.indexOf("/");
-	if (slashIdx > 0) {
-		const rawProvider = model.id.slice(0, slashIdx);
-		const shortName = model.id.slice(slashIdx + 1);
+	if (slashIdx <= 0) return getSupportedThinkingLevels(model as any);
 
-		// Helper: try to find a native model with thinkingLevelMap in a given provider
-		const findInProvider = (provider: string) => {
-			const nativeModels = getModels(provider);
-			return nativeModels.find((m: any) => m.id === shortName && m.thinkingLevelMap);
-		};
+	const rawProvider = model.id.slice(0, slashIdx);
+	const shortName = model.id.slice(slashIdx + 1);
 
-		// 1. Try the raw provider name directly
-		let nativeModel = findInProvider(rawProvider);
-		if (nativeModel) {
-			const merged = { ...model, thinkingLevelMap: nativeModel.thinkingLevelMap };
-			return getSupportedThinkingLevels(merged as any);
-		}
+	const findInProvider = (provider: string) => {
+		const nativeModels = getModels(provider as any);
+		return nativeModels.find((m: any) => m.id === shortName && m.thinkingLevelMap);
+	};
 
-		// 2. Try normalized provider (strip hyphens, lowercase)
-		const normProvider = normalizeProvider(rawProvider);
-		if (normProvider !== rawProvider.toLowerCase()) {
-			nativeModel = findInProvider(normProvider);
-			if (nativeModel) {
-				const merged = { ...model, thinkingLevelMap: nativeModel.thinkingLevelMap };
-				return getSupportedThinkingLevels(merged as any);
-			}
-		}
+	const tryLevels = (provider: string): string[] | undefined => {
+		const native = findInProvider(provider);
+		if (!native) return;
+		return getSupportedThinkingLevels({ ...model, thinkingLevelMap: native.thinkingLevelMap } as any);
+	};
 
-		// 3. Fall back to scanning all providers for the short name
-		const providers = getProviders();
-		for (const prov of providers) {
-			if (prov === rawProvider || prov === normProvider) continue; // already tried
-			nativeModel = findInProvider(prov);
-			if (nativeModel) {
-				const merged = { ...model, thinkingLevelMap: nativeModel.thinkingLevelMap };
-				return getSupportedThinkingLevels(merged as any);
-			}
-		}
+	let result = tryLevels(rawProvider);
+	if (result) return result;
+
+	const normProvider = normalizeProvider(rawProvider);
+	if (normProvider !== rawProvider.toLowerCase()) {
+		result = tryLevels(normProvider);
+		if (result) return result;
 	}
+
+	for (const prov of getProviders()) {
+		if (prov === rawProvider || prov === normProvider) continue;
+		result = tryLevels(prov);
+		if (result) return result;
+	}
+
 	return getSupportedThinkingLevels(model as any);
 }
 
@@ -155,14 +166,6 @@ function formatContextWindow(window: number): string {
 	return `${Math.round(window / 1000)}K`;
 }
 
-/** Pad a plain text string to a target visible width by appending spaces. */
-function padVisible(text: string, width: number): string {
-	const cur = visibleWidth(text);
-	const needed = width - cur;
-	if (needed > 0) return text + " ".repeat(needed);
-	return text;
-}
-
 /** Fit plain text into a fixed-width cell (truncate then pad). */
 function padVisibleLeft(text: string, width: number): string {
 	const cur = visibleWidth(text);
@@ -197,7 +200,21 @@ function fitCell(text: string, width: number, align: "left" | "right" = "left"):
 	return align === "right" ? padVisibleLeft(fitted, width) : padVisibleRight(fitted, width);
 }
 
-// ── Artificial Analysis data ───────────────────────────────────────────────
+// ── Artificial Analysis coding benchmark data ─────────────────────────────
+//
+// The Artificial Analysis dataset has one entry per model+thinking-level
+// combination, e.g. "deepseek-v3-0324" or "kimi-k2-6-low". Each entry has
+// a coding index score (0-100) and the model creator info.
+//
+// We parse this into a Map<"provider/baseSlug", Map<thinkingLevel, score>>
+// then use a multi-strategy matching algorithm (see findLevelMap) to
+// connect pi model IDs to AA scores.
+//
+// Key challenge: pi model IDs and AA slugs don't follow the same naming
+// conventions. For example pi has "kimi-k2-7-code" but AA only has
+// "kimi-k2" (original) and "kimi-k2-6" (v2.6). The matching below
+// handles these cases with a two-direction prefix search guarded
+// by suffix validation (see validPrefixSuffix).
 
 interface AAModelEntry {
 	name: string;
@@ -234,7 +251,6 @@ const CODING_SLOTS: ReadonlyArray<[string, number]> = [
 type AAModelLevels = Map<string, Map<string, number>>;
 
 let aaModelData: AAModelLevels | null = null;
-let aaReady: Promise<void> | null = null;
 
 /** Extract base slug and pi thinking level from an AA entry slug. */
 function parseEntryLevel(slug: string, name: string): { baseSlug: string; level: string } | null {
@@ -284,6 +300,24 @@ function buildAAModelData(data: AAModelEntry[]): AAModelLevels {
 	return map;
 }
 
+/**
+ * Match a pi model (provider + ID) against the AA dataset to find its
+ * per-thinking-level coding index scores.
+ *
+ * The matching is a multi-strategy fallback chain because pi model IDs
+ * and AA slugs use different naming conventions:
+ *
+ *   1. Exact match with the pi provider ("openrouter" → "provider/key")
+ *   2. If model ID contains a sub-provider (e.g. "deepseek/deepseek-v3"),
+ *      extract it and try exact + prefix matching
+ *   3. Prefix matching with the pi provider (catches version suffixes
+ *      like "deepseek-v3" vs "deepseek-v3-0324")
+ *   4. Common provider aliases ("qwen" → "alibaba", "moonshotai" → "kimi")
+ *   5. Cleaned names (strip ":free", "-latest") then retry all of the above
+ *
+ * Each step uses validPrefixSuffix to avoid false matches — see the
+ * tryPrefix function for details on the two-direction search.
+ */
 function findLevelMap(
 	provider: string,
 	modelId: string,
@@ -311,21 +345,43 @@ function findLevelMap(
 		return undefined;
 	};
 
+	/**
+	 * Prefix match is only valid when the pi model name suffix after the AA slug
+	 * is a version/checkpoint suffix (only dashes and digits starting with -N) or
+	 * empty — not a sub-model name like "-7-code". This prevents false matches
+	 * like K2 → K2.7-Code while allowing DeepSeek-V3 → DeepSeek-V3-0324.
+	 */
+	const validPrefixSuffix = (rest: string): boolean =>
+		rest === "" || /^-\d[\d-]*$/.test(rest);
+
 	/** Try prefix matching with a given (provider, model) pair. */
 	const tryPrefix = (pr: string, md: string): Map<string, number> | undefined => {
-		for (const [key, val] of data) {
-			if (key.startsWith(pr + "/") && md.startsWith(key.slice(pr.length + 1))) return val;
-		}
+		const prefix = pr + "/";
 		const norm = normalForms(md);
-		for (const [key, val] of data) {
-			if (key.startsWith(pr + "/")) {
-				const aaSlug = key.slice(pr.length + 1);
-				for (const c of norm) {
-					if (aaSlug.startsWith(c)) return val;
-				}
-			}
-		}
-		return undefined;
+
+		const findFirst = (
+			predicate: (aaSlug: string, val: Map<string, number>) => boolean,
+		): Map<string, number> | undefined => {
+			let found: Map<string, number> | undefined;
+			data.forEach((val, key) => {
+				if (found) return;
+				if (!key.startsWith(prefix)) return;
+				const aaSlug = key.slice(prefix.length);
+				if (predicate(aaSlug, val)) found = val;
+			});
+			return found;
+		};
+
+		// Direction 1: pi model name starts with AA slug
+		const r1 = findFirst((aaSlug) =>
+			md.startsWith(aaSlug) && validPrefixSuffix(md.slice(aaSlug.length)),
+		);
+		if (r1) return r1;
+
+		// Direction 2: AA slug starts with pi model name
+		return findFirst((aaSlug) =>
+			norm.some((c) => aaSlug.startsWith(c) && validPrefixSuffix(aaSlug.slice(c.length))),
+		);
 	};
 
 	// 1. Try pi's provider directly (e.g. openrouter/deepseek-v4-flash)
@@ -430,15 +486,41 @@ function formatCodingData(levelMap: Map<string, number>): { display: string; sor
 	return { display, sortValue };
 }
 
+//
+// ── Caching strategy ────
+//
+// AA data is fetched from the API and cached to disk for 24 hours.
+// The design prioritizes not blocking the UI over data freshness:
+//
+//   initAAData()  — called synchronously when the table opens.
+//                   Tries to load from cache. If cache is stale,
+//                   fires a background refresh (fire-and-forget,
+//                   never awaited). If no cache exists, also fires
+//                   a background fetch. Returns immediately.
+//
+//   fetchAAData() — the actual async HTTP fetch. Writes to cache
+//                   on success, falls back to stale cache on error.
+//
+//   loadStaleCache() — shared helper: tries to read whatever is on
+//                      disk. Used in fetchAAData's error paths.
+//
+// Result: the first open shows whatever data is cached (or no data),
+// and the table auto-updates on the next open after the fetch completes.
+//
+
+function loadStaleCache(): void {
+	try {
+		const raw = readFileSync(AA_CACHE_FILE, "utf-8");
+		aaModelData = buildAAModelData(JSON.parse(raw) as AAModelEntry[]);
+	} catch { /* no cache file yet */ }
+}
+
 async function fetchAAData(): Promise<void> {
 	if (!AA_API_KEY) return;
 	try {
 		const resp = await fetch(AA_API_URL, { headers: { "x-api-key": AA_API_KEY } });
 		if (!resp.ok) {
-			try {
-				const raw = readFileSync(AA_CACHE_FILE, "utf-8");
-				aaModelData = buildAAModelData(JSON.parse(raw) as AAModelEntry[]);
-			} catch { /* no stale cache */ }
+			loadStaleCache();
 			return;
 		}
 		const json = await resp.json();
@@ -449,41 +531,44 @@ async function fetchAAData(): Promise<void> {
 			writeFileSync(AA_CACHE_FILE, JSON.stringify(data));
 		} catch { /* cache write failure is non-fatal */ }
 	} catch {
-		try {
-			const raw = readFileSync(AA_CACHE_FILE, "utf-8");
-			aaModelData = buildAAModelData(JSON.parse(raw) as AAModelEntry[]);
-		} catch { /* no stale cache either */ }
+		loadStaleCache();
 	}
 }
 
-function initAAData(): boolean {
-	if (!AA_API_KEY) return false;
-	// Try to load cache regardless of age — stale data is better than blocking.
+function initAAData(): void {
+	if (!AA_API_KEY) return;
 	try {
 		const raw = readFileSync(AA_CACHE_FILE, "utf-8");
 		aaModelData = buildAAModelData(JSON.parse(raw) as AAModelEntry[]);
-		// If cache is stale, fire a background refresh (no await).
+		// Cache exists — if stale, refresh in background.
 		try {
 			const s = statSync(AA_CACHE_FILE);
 			if (Date.now() - s.mtimeMs >= AA_CACHE_TTL_MS) {
-				aaReady = fetchAAData(); // background — never awaited
+				fetchAAData(); // fire-and-forget
 			}
 		} catch { /* stat failed, ignore */ }
-		return true; // data loaded from cache (possibly stale)
-	} catch { /* no cache file */ }
-	// No cache at all — fire background fetch, return false.
-	aaReady = fetchAAData();
-	return false;
+	} catch { /* no cache file */
+		fetchAAData(); // fire-and-forget
+	}
 }
 
+//
 // ── Terminal table component ───────────────────────────────────────────────
+//
+// The table is rendered as a custom TUI widget via pi's ctx.ui.custom() API.
+// Pi's TUI engine calls:
+//   render(width)   → get display lines
+//   handleInput(k)  → process a keypress
+//   invalidate()    → mark cached lines dirty so render() rebuilds
+//
+// The component owns the data, scroll position, selection, sort state,
+// and a line cache. It's fully self-contained — no external deps.
+//
 
 type SortColumn = "name" | "input" | "output" | "coding";
 
 class ExtraInfoTable {
 	private rows: ModelRow[];
-	private pi: ExtensionAPI;
-	private ctx: ExtensionCommandContext;
 	private theme: Theme;
 	private done: (value: string | undefined) => void;
 	private scrollOffset = 0;
@@ -494,14 +579,10 @@ class ExtraInfoTable {
 
 	constructor(
 		rows: ModelRow[],
-		pi: ExtensionAPI,
-		ctx: ExtensionCommandContext,
 		theme: Theme,
 		done: (value: string | undefined) => void,
 	) {
 		this.rows = rows;
-		this.pi = pi;
-		this.ctx = ctx;
 		this.theme = theme;
 		this.done = done;
 	}
@@ -589,12 +670,9 @@ class ExtraInfoTable {
 				case "output":
 					cmp = a.outputPrice - b.outputPrice;
 					break;
-				case "coding": {
-					const aVal = a.codingSortValue;
-					const bVal = b.codingSortValue;
-					cmp = aVal - bVal;
+				case "coding":
+					cmp = a.codingSortValue - b.codingSortValue;
 					break;
-				}
 			}
 			return cmp * dir;
 		});
@@ -627,7 +705,6 @@ class ExtraInfoTable {
 		const t = this.theme;
 		const accent = (s: string) => t.fg("accent", s);
 		const text = (s: string) => t.fg("text", s);
-		const muted = (s: string) => t.fg("muted", s);
 		const dim = (s: string) => t.fg("dim", s);
 		const success = (s: string) => t.fg("success", s);
 
@@ -706,7 +783,20 @@ class ExtraInfoTable {
 	}
 }
 
+//
 // ── Extension registration ─────────────────────────────────────────────────
+//
+// Registers a command and a keyboard shortcut (Ctrl+Alt+F), both of which
+// open the interactive scoped-models table. The shortcut is the primary
+// entry point for most users.
+//
+// The flow:
+//   1. Read enabled models from pi's settings (enabledModels)
+//   2. Initialize AA data from cache (or fire background fetch)
+//   3. Build ModelRow[] with pricing, thinking levels, benchmarks
+//   4. Show the interactive table via ctx.ui.custom()
+//   5. If user picks a model (Enter), switch to it via pi.setModel()
+//
 
 export default function (pi: ExtensionAPI) {
 	pi.registerCommand("scoped-models-extra-info", {
@@ -755,11 +845,8 @@ async function showScopedModelsTable(
 		matchedModels = [];
 
 		for (const pattern of enabledPatterns) {
-			const firstSlash = pattern.indexOf("/");
-			if (firstSlash === -1) continue;
-
-			const provider = pattern.slice(0, firstSlash);
-			const modelId = pattern.slice(firstSlash + 1);
+			const [provider, modelId] = splitPath(pattern);
+			if (!provider) continue;
 
 			const key = `${provider}/${modelId}`;
 			let model = modelLookup.get(key);
@@ -779,9 +866,7 @@ async function showScopedModelsTable(
 		return;
 	}
 
-	// Initialize AA data (sync from cache, never blocks on HTTP)
-	// If cache is empty or AA_API_KEY unset, data shows without coding index on first load.
-	const hasAA = initAAData();
+	initAAData();
 
 	// Build rows
 	const rows = buildRows(matchedModels, aaModelData);
@@ -797,7 +882,7 @@ async function showScopedModelsTable(
 	// Show interactive table
 	const selectedPath = await ctx.ui.custom<string | undefined>(
 		(_tui, theme, _kb, done) => {
-			const table = new ExtraInfoTable(rows, pi, ctx, theme, done);
+			const table = new ExtraInfoTable(rows, theme, done);
 			table.selectedIndex = initialIndex;
 			table.ensureVisible();
 			return table;
@@ -806,9 +891,7 @@ async function showScopedModelsTable(
 
 	// If user selected a model (Enter/Space), switch to it
 	if (selectedPath) {
-		const firstSlash = selectedPath.indexOf("/");
-		const provider = firstSlash >= 0 ? selectedPath.slice(0, firstSlash) : "";
-		const modelId = firstSlash >= 0 ? selectedPath.slice(firstSlash + 1) : selectedPath;
+		const [provider, modelId] = splitPath(selectedPath);
 
 		const model = ctx.modelRegistry.find(provider, modelId);
 		if (model) {
@@ -824,7 +907,15 @@ async function showScopedModelsTable(
 	}
 }
 
+//
 // ── Row building ───────────────────────────────────────────────────────────
+//
+// Converts pi's raw model objects into ModelRow display records.
+// For each model it resolves thinking levels (with fallback for
+// proxied models), looks up AA coding benchmarks, and formats
+// prices/context into human-readable strings.
+// Rows are sorted by output price ascending by default.
+//
 
 function buildRows(
 	models: {
