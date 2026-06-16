@@ -683,7 +683,7 @@ class ExtraInfoTable {
 	}
 
 	private maxVisibleRows(): number {
-		return Math.min(this.rows.length, 20);
+		return this.rows.length;
 	}
 
 	ensureVisible(): void {
@@ -709,8 +709,6 @@ class ExtraInfoTable {
 		const success = (s: string) => t.fg("success", s);
 
 		const arrow = this.sortDirection === "asc" ? ">" : "<";
-		const sortMarker = (col: SortColumn): string =>
-			this.sortColumn === col ? success(arrow) : "";
 
 		const lines: string[] = [];
 		const add = (s: string) => lines.push(truncateToWidth(s, width));
@@ -731,16 +729,23 @@ class ExtraInfoTable {
 		// ── Header ──
 		add("");
 
-		const headerCells = [
-			fitCell(`Model${sortMarker("name")}`, colSlug, "left"),
-			fitCell(`Input$${sortMarker("input")}`, colIn, "right"),
-			fitCell(`Output$${sortMarker("output")}`, colOut, "right"),
-			fitCell("Context", colCtx, "right"),
-			fitCell("Modalities", colMod, "left"),
-			fitCell("Thinking", colThink, "left"),
-			fitCell(`Coding index${sortMarker("coding")}`, colCode, "left"),
+		interface HeaderCellDef { label: string; col: SortColumn | null; width: number; align: "left" | "right" }
+		const headerDefs: HeaderCellDef[] = [
+			{ label: "Model", col: "name", width: colSlug, align: "left" },
+			{ label: "Input$", col: "input", width: colIn, align: "right" },
+			{ label: "Output$", col: "output", width: colOut, align: "right" },
+			{ label: "Context", col: null, width: colCtx, align: "right" },
+			{ label: "Modalities", col: null, width: colMod, align: "left" },
+			{ label: "Thinking", col: null, width: colThink, align: "left" },
+			{ label: "Coding index", col: "coding", width: colCode, align: "left" },
 		];
-		add(accent("  " + headerCells.join(sep)));
+
+		const headerCells = headerDefs.map(({ label, col, width, align }) => {
+			const isSorted = col !== null && this.sortColumn === col;
+			const content = fitCell(isSorted ? label + success(arrow) : label, width, align);
+			return isSorted ? accent(content) : dim(content);
+		});
+		add("  " + headerCells.join(sep));
 
 		// Separator line
 		add(dim("  " + "-".repeat(Math.min(width, rowWidth))));
