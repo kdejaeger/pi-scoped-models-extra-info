@@ -326,13 +326,25 @@ function findLevelMap(
 	const p = provider.toLowerCase();
 	const mid = modelId.toLowerCase().replace(/\./g, "-");
 
-	/** Collect normalized forms (with date stripping) for a model name. */
+	/** Model variant suffixes that AA systematically omits from slugs. */
+	const OMITTED_VARIANT_SUFFIXES = ["-it", "-instruct", "-chat"];
+
+	/** Collect normalized forms (with date and variant suffix stripping) for a model name. */
 	const normalForms = (name: string): string[] => {
 		const r = [name];
+		// Strip date suffixes: -2025-01-01-1 or -20250101
 		const s1 = name.replace(/-\d{4}-\d{2}-\d{2}(?:-\d+)?$/, "");
 		if (s1 !== name) r.push(s1);
 		const s2 = name.replace(/-\d{8}$/, "");
 		if (s2 !== name && s2 !== s1) r.push(s2);
+		// Strip common model variant suffixes that AA omits (e.g. "-it", "-instruct", "-chat")
+		// AA entry slugs never include these suffixes, but pi/OpenRouter model IDs often do.
+		for (const suffix of OMITTED_VARIANT_SUFFIXES) {
+			if (name.endsWith(suffix)) {
+				const stripped = name.slice(0, -suffix.length);
+				if (!r.includes(stripped)) r.push(stripped);
+			}
+		}
 		return r;
 	};
 
