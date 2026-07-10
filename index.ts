@@ -479,24 +479,58 @@ function findLevelMap(
 	return undefined;
 }
 
-/** Format level→CI map as display string + sort value (by "high" level CI). */
-function formatCodingData(levelMap: Map<string, number>): { display: string; sortValue: number } {
+/**
+ * Format level→CI map as display string + sort value (by "high" level CI).
+ *
+ * When `supportedLevels` is provided, the algorithm walks from highest
+ * effort (max) down to lowest (off), carrying AA data from unsupported
+ * levels and depositing it into the nearest lower slot pi supports.
+ *
+ * For example: if AA scored `glm-5-2-max` but pi caps at `xhigh` for
+ * this model, the max score is shown under the `xhigh` label. The
+ * thinking column independently reflects what pi actually supports.
+ */
+function formatCodingData(
+	levelMap: Map<string, number>,
+	supportedLevels?: Set<string>,
+): { display: string; sortValue: number } {
 	let display = "";
 	let sortValue = -1;
-	for (const [level, width] of CODING_SLOTS) {
-		const ci = levelMap.get(level);
-		if (ci != null) {
-			display += `${level}(${ci.toFixed(1)})`.padEnd(width);
-			if (level === "high") sortValue = ci;
-		} else {
-			display += " ".repeat(width);
+	let carry: number | undefined;
+	let lastPlaced: number | undefined;
+
+	for (let i = CODING_SLOTS.length - 1; i >= 0; i--) {
+		const [level, width] = CODING_SLOTS[i];
+		const direct = levelMap.get(level);
+
+		if (supportedLevels && !supportedLevels.has(level)) {
+			// Not shown — remember any AA data as carry for the nearest
+			// lower slot that pi does support.
+			if (direct != null) carry = direct;
+			display = " ".repeat(width) + display;
+			continue;
 		}
+
+		// Use direct AA data or the carry from a higher unsupported level
+		const ci = direct ?? carry;
+		if (ci != null) {
+			display = `${level}(${ci.toFixed(1)})`.padEnd(width) + display;
+			if (level === "high") sortValue = ci;
+			lastPlaced = ci;
+		} else {
+			display = " ".repeat(width) + display;
+		}
+		carry = undefined; // consumed — one spill per orphan
 	}
+
 	if (sortValue < 0) {
+		// Prioritise direct-hits for sorting, but also check spilled data
 		for (const level of ["max", "xhigh", "medium", "low", "minimal", "off"]) {
+			if (supportedLevels && !supportedLevels.has(level)) continue;
 			const ci = levelMap.get(level);
 			if (ci != null) { sortValue = ci; break; }
 		}
+		if (sortValue < 0 && lastPlaced != null) sortValue = lastPlaced;
 	}
 	return { display, sortValue };
 }
@@ -963,7 +997,7 @@ function buildRows(
 		if (aaModelData) {
 			const levelMap = findLevelMap(model.provider, model.id, aaModelData);
 			if (levelMap) {
-				const fmt = formatCodingData(levelMap);
+				const fmt = formatCodingData(levelMap, new Set(levels));
 				codingIndex = fmt.display;
 				codingSortValue = fmt.sortValue;
 			}
