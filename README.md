@@ -97,7 +97,6 @@ pi-scoped-models-extra-info/
 ├── index.ts              # Extension source
 ├── package.json          # Pi package manifest
 ├── screenshot.png         # Table screenshot
-├── LICENSE               # MIT
 └── README.md             # This file
 ```
 
