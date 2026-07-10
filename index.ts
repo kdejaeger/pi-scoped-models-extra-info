@@ -881,6 +881,9 @@ async function showScopedModelsTable(
 		}
 	}
 
+	// Filter out models whose slug starts with "router/"
+	matchedModels = matchedModels.filter((m) => !getSlug(m).startsWith("router/"));
+
 	if (matchedModels.length === 0) {
 		ctx.ui.notify("No available models found", "warning");
 		return;
