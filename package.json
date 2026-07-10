@@ -1,6 +1,6 @@
 {
   "name": "pi-scoped-models-extra-info",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "Pi coding agent extension — interactive table of your scoped models with pricing, context window, thinking levels, modalities, and coding benchmarks",
   "license": "MIT",
   "author": "Koen de Jaeger",
@@ -28,8 +28,8 @@
     "@earendil-works/pi-tui": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.79",
-    "@earendil-works/pi-ai": "^0.79",
-    "@earendil-works/pi-tui": "^0.79"
+    "@earendil-works/pi-coding-agent": "^0.80",
+    "@earendil-works/pi-ai": "^0.80",
+    "@earendil-works/pi-tui": "^0.80"
   }
 }

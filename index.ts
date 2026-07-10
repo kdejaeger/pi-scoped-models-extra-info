@@ -130,7 +130,8 @@ const THINKING_LEVEL_SLOTS: ReadonlyArray<[string, number]> = [
 	["low", 4],
 	["medium", 7],
 	["high", 5],
-	["xhigh", 5],
+	["xhigh", 6],
+	["max", 4],
 ];
 
 function getThinkingLevelsLabel(model: { reasoning: boolean }, levels: string[]): string {
@@ -228,13 +229,14 @@ const SUFFIX_TO_LEVEL: ReadonlyArray<{ suffix: string; level: string }> = [
 	{ suffix: "-non-reasoning-low-effort", level: "off" },
 	{ suffix: "-non-reasoning-high-effort", level: "off" },
 	{ suffix: "-non-reasoning", level: "off" },
+	{ suffix: "-minimal", level: "minimal" },
 	{ suffix: "-low-effort", level: "low" },
 	{ suffix: "-low", level: "low" },
 	{ suffix: "-medium", level: "medium" },
 	{ suffix: "-high-effort", level: "high" },
 	{ suffix: "-high", level: "high" },
-	{ suffix: "-minimal", level: "minimal" },
-	{ suffix: "-adaptive", level: "xhigh" },
+	{ suffix: "-max-effort", level: "max" },
+	{ suffix: "-max", level: "max" },
 ];
 
 /** Wider slots for coding column: "level(99.9)" per slot, +1 for spacing */
@@ -245,6 +247,7 @@ const CODING_SLOTS: ReadonlyArray<[string, number]> = [
 	["medium", 13],
 	["high", 11],
 	["xhigh", 12],
+	["max", 12],
 ];
 
 /** per-model: baseKey → Map<thinkingLevel, codingIndex> */
@@ -263,16 +266,16 @@ function parseEntryLevel(slug: string, name: string): { baseSlug: string; level:
 	}
 	// No known slug suffix — check name for reasoning-mode hints
 	const n = name.toLowerCase();
-	const nameLevelRe = /\(\s*(minimal|low|medium|high|xhigh|non.reasoning|non reasoning|reasoning)\s*\)/;
+	const nameLevelRe = /\(\s*(minimal|low|medium|high|xhigh|max|non.reasoning|non reasoning|reasoning)\s*\)/;
 	const nameMatch = n.match(nameLevelRe);
 	if (nameMatch) {
 		const raw = nameMatch[1].replace(/[^a-z]/g, "");
 		const level = raw === "nonreasoning" ? "off" : raw === "reasoning" ? "high" : raw;
 		return { baseSlug: s, level };
 	}
-	// Check for "Max Effort" (maps to xhigh)
+	// Check for "Max Effort" (maps to max)
 	if (n.includes("max effort")) {
-		return { baseSlug: s, level: "xhigh" };
+		return { baseSlug: s, level: "max" };
 	}
 	// Final fallback: high — most reasoning models default here, xhigh only when specified
 	return { baseSlug: s, level: "high" };
@@ -490,7 +493,7 @@ function formatCodingData(levelMap: Map<string, number>): { display: string; sor
 		}
 	}
 	if (sortValue < 0) {
-		for (const level of ["xhigh", "medium", "low", "minimal", "off"]) {
+		for (const level of ["max", "xhigh", "medium", "low", "minimal", "off"]) {
 			const ci = levelMap.get(level);
 			if (ci != null) { sortValue = ci; break; }
 		}
@@ -730,8 +733,8 @@ class ExtraInfoTable {
 		const colIn = 7;
 		const colOut = 8;
 		const colCtx = 7;
-		const colCode = 70;
-		const colThink = 33;
+		const colCode = 82;
+		const colThink = 38;
 		const colMod = 10;
 
 		// Build separator AFTER deciding column widths (so we can compute total)
