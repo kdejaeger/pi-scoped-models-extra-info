@@ -6,7 +6,7 @@
  * thinking levels, and Artificial Analysis coding benchmarks.
  *
  * Press Enter on a row to switch to that model.
- * Shortcut: Ctrl+Alt+F
+ * Shortcut: Alt+E
  *
  * Environment variables:
  *   AA_API_KEY  — Artificial Analysis API key for coding index column (optional).
@@ -828,9 +828,9 @@ class ExtraInfoTable {
 			this.rows.length > this.maxVisibleRows()
 				? `${this.selectedIndex + 1}/${this.rows.length}`
 				: `${this.rows.length} models`;
-		const footerText = ` ↑↓/jk navigate  •  n/i/o/c sort  •  Enter select  •  q/Esc  •  ${scrollInfo}`;
+		const footerText = `  ↑↓/jk navigate  •  n/i/o/c sort  •  Enter select  •  q/Esc  •  ${scrollInfo}`;
 		add(dim(footerText));
-		add(accent("  " + "-".repeat(Math.min(width, rowWidth))));
+		add(dim("  " + "-".repeat(Math.min(width, rowWidth))));
 
 		this.cachedLines = lines;
 		return lines;
@@ -861,7 +861,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerShortcut(Key.ctrlAlt("f"), {
+	pi.registerShortcut(Key.alt("e"), {
 		description: "Open scoped models table",
 		handler: async (ctx: ExtensionContext) => {
 			await showScopedModelsTable(pi, ctx);

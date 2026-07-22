@@ -43,7 +43,7 @@ Run the command:
 /scoped-models-extra-info
 ```
 
-Or use the keyboard shortcut: **`Ctrl+Alt+F`**
+Or use the keyboard shortcut: **`Alt+E`**
 
 ### Navigation
 
@@ -96,7 +96,7 @@ The table displays only the models you have **enabled/scoped** in your pi `setti
 pi-scoped-models-extra-info/
 ├── index.ts              # Extension source
 ├── package.json          # Pi package manifest
-├── screenshot.png         # Table screenshot
+├── screenshot.png        # Table screenshot
 └── README.md             # This file
 ```
 
