@@ -6,5 +6,6 @@ tmp/
 .idea/
 
 .pi/
+.pi-subagents/
 
 .junie

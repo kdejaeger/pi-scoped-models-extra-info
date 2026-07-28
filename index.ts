@@ -235,6 +235,8 @@ const SUFFIX_TO_LEVEL: ReadonlyArray<{ suffix: string; level: string }> = [
 	{ suffix: "-medium", level: "medium" },
 	{ suffix: "-high-effort", level: "high" },
 	{ suffix: "-high", level: "high" },
+	{ suffix: "-xhigh-effort", level: "xhigh" },
+	{ suffix: "-xhigh", level: "xhigh" },
 	{ suffix: "-max-effort", level: "max" },
 	{ suffix: "-max", level: "max" },
 ];
@@ -480,15 +482,22 @@ function findLevelMap(
 }
 
 /**
- * Format level→CI map as display string + sort value (by "high" level CI).
+ * Format level→CI map as display string + sort value.
  *
- * When `supportedLevels` is provided, the algorithm walks from highest
- * effort (max) down to lowest (off), carrying AA data from unsupported
- * levels and depositing it into the nearest lower slot pi supports.
+ * The algorithm walks CODING_SLOTS from highest effort (max) down to
+ * lowest (off), carrying AA data from unsupported levels and depositing
+ * it into the nearest lower slot pi supports.
  *
  * For example: if AA scored `glm-5-2-max` but pi caps at `xhigh` for
  * this model, the max score is shown under the `xhigh` label. The
  * thinking column independently reflects what pi actually supports.
+ *
+ * Sort priority: prefer the "high" level CI if available (the most
+ * common reasoning level, and the most comparable across models).
+ * Otherwise fall back to the highest-priority supported level with
+ * data — max > xhigh > medium > low > minimal > off. The fallback also
+ * honors carry values, so an xhigh-only model whose only AA entry is a
+ * max score (GLM 5.2) sorts by the carried xhigh value the user sees.
  */
 function formatCodingData(
 	levelMap: Map<string, number>,
@@ -497,7 +506,10 @@ function formatCodingData(
 	let display = "";
 	let sortValue = -1;
 	let carry: number | undefined;
-	let lastPlaced: number | undefined;
+	// Carry values that were consumed by a supported slot. Lets the
+	// fallback honor "the value the user actually sees" when "high"
+	// data is absent (e.g. xhigh-only model with max carry).
+	const inherited = new Map<string, number>();
 
 	for (let i = CODING_SLOTS.length - 1; i >= 0; i--) {
 		const [level, width] = CODING_SLOTS[i];
@@ -516,7 +528,7 @@ function formatCodingData(
 		if (ci != null) {
 			display = `${level}(${ci.toFixed(1)})`.padEnd(width) + display;
 			if (level === "high") sortValue = ci;
-			lastPlaced = ci;
+			if (carry != null) inherited.set(level, carry);
 		} else {
 			display = " ".repeat(width) + display;
 		}
@@ -524,13 +536,14 @@ function formatCodingData(
 	}
 
 	if (sortValue < 0) {
-		// Prioritise direct-hits for sorting, but also check spilled data
+		// Fall back to the highest-priority supported level with data.
+		// Both the direct levelMap entry and any carried value count;
+		// direct wins.
 		for (const level of ["max", "xhigh", "medium", "low", "minimal", "off"]) {
 			if (supportedLevels && !supportedLevels.has(level)) continue;
-			const ci = levelMap.get(level);
+			const ci = levelMap.get(level) ?? inherited.get(level);
 			if (ci != null) { sortValue = ci; break; }
 		}
-		if (sortValue < 0 && lastPlaced != null) sortValue = lastPlaced;
 	}
 	return { display, sortValue };
 }
