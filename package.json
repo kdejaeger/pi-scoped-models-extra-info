@@ -1,6 +1,6 @@
 {
   "name": "pi-scoped-models-extra-info",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Pi coding agent extension — interactive table of your scoped models with pricing, context window, thinking levels, modalities, and coding benchmarks",
   "author": "Koen de Jaeger",
   "keywords": [
