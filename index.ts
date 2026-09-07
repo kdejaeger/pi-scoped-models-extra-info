@@ -175,7 +175,9 @@ function isFreeModelLocal(model: { _freeKnown?: boolean; _isFree?: boolean; _pri
 	const name = ((model as any).name ?? (model as any).id ?? "").toLowerCase();
 	const hasFreeInName = name.includes("free");
 	if ((model as any)._pricingKnown === false) return hasFreeInName;
-	const isZeroCost = ((model.cost?.input ?? 0) === 0 && (model.cost?.output ?? 0) === 0);
+	// Only treat as free when pricing is actually KNOWN to be zero — a missing/null
+	// cost means unknown, which contradicts "free" (rendering shows — for those).
+	const isZeroCost = model.cost?.input === 0 && model.cost?.output === 0;
 	return isZeroCost || hasFreeInName;
 }
 
@@ -768,35 +770,35 @@ class ExtraInfoTable {
 		}
 
 		if (matchesKey(data, "down") || matchesKey(data, "j")) {
-			this.selectedIndex = Math.min(this.rows.length - 1, this.selectedIndex + 1);
+			this.selectedIndex = Math.max(0, Math.min(this.rows.length - 1, this.selectedIndex + 1));
 			this.ensureVisible();
 			this.invalidate();
 			return;
 		}
 
-		if (matchesKey(data, "home") || matchesKey(data, "ctrl+a")) {
+		if (matchesKey(data, "home")) {
 			this.selectedIndex = 0;
 			this.scrollOffset = 0;
 			this.invalidate();
 			return;
 		}
 
-		if (matchesKey(data, "end") || matchesKey(data, "ctrl+e")) {
-			this.selectedIndex = this.rows.length - 1;
+		if (matchesKey(data, "end")) {
+			this.selectedIndex = Math.max(0, this.rows.length - 1);
 			this.scrollOffset = Math.max(0, this.rows.length - this.maxVisibleRows());
 			this.invalidate();
 			return;
 		}
 
-		if (matchesKey(data, "pageUp") || matchesKey(data, "ctrl+b")) {
+		if (matchesKey(data, "pageUp")) {
 			this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisibleRows());
 			this.ensureVisible();
 			this.invalidate();
 			return;
 		}
 
-		if (matchesKey(data, "pageDown") || matchesKey(data, "ctrl+f") || matchesKey(data, "ctrl+d")) {
-			this.selectedIndex = Math.min(this.rows.length - 1, this.selectedIndex + this.maxVisibleRows());
+		if (matchesKey(data, "pageDown")) {
+			this.selectedIndex = Math.max(0, Math.min(this.rows.length - 1, this.selectedIndex + this.maxVisibleRows()));
 			this.ensureVisible();
 			this.invalidate();
 			return;
@@ -827,11 +829,16 @@ class ExtraInfoTable {
 					cmp = a.slug.localeCompare(b.slug);
 					break;
 				case "input":
-					cmp = (a.inputPrice ?? Number.POSITIVE_INFINITY) - (b.inputPrice ?? Number.POSITIVE_INFINITY);
-					break;
-				case "output":
-					cmp = (a.outputPrice ?? Number.POSITIVE_INFINITY) - (b.outputPrice ?? Number.POSITIVE_INFINITY);
-					break;
+				case "output": {
+					// Unknown pricing (null) sorts last in BOTH directions — multiplying by a
+					// descending dir must not float "—" rows above priced ones.
+					const x = column === "input" ? a.inputPrice : a.outputPrice;
+					const y = column === "input" ? b.inputPrice : b.outputPrice;
+					if (x == null && y == null) return 0;
+					if (x == null) return 1;
+					if (y == null) return -1;
+					return (x - y) * dir;
+				}
 				case "coding":
 					cmp = a.codingSortValue - b.codingSortValue;
 					break;
@@ -933,16 +940,6 @@ class ExtraInfoTable {
 		// Separator line
 		add(dim("  " + "-".repeat(Math.min(width, rowWidth))));
 
-		// ── Free filter status ──
-		if (this.freeOnly) {
-			add(accent(`  ◆ FREE only ${this.rows.length}/${this.allRows.length} — press f to show all`));
-		} else {
-			const freeCount = this.allRows.filter((r) => r.isFree).length;
-			if (freeCount > 0 && freeCount < this.allRows.length) {
-				add(dim(`  f: filter free (${freeCount}/${this.allRows.length})`));
-			}
-		}
-
 		// ── Data rows (viewport with paging) ──
 		const maxVisible = this.maxVisibleRows();
 		const endIndex = Math.min(this.scrollOffset + maxVisible, this.rows.length);
@@ -982,17 +979,29 @@ class ExtraInfoTable {
 		add("");
 		let scrollInfo: string;
 		if (this.rows.length === 0) {
-			scrollInfo = this.freeOnly ? `0 free / ${this.allRows.length} total` : "0 models";
+			scrollInfo = "0 models";
 		} else if (this.rows.length > this.maxVisibleRows()) {
 			scrollInfo = `${this.selectedIndex + 1}/${this.rows.length}`;
-			if (this.freeOnly) scrollInfo += ` (FREE ${this.rows.length}/${this.allRows.length})`;
 		} else {
 			scrollInfo = `${this.rows.length} models`;
-			if (this.freeOnly) scrollInfo = `FREE ${this.rows.length}/${this.allRows.length}`;
 		}
-		const filterHint = this.freeOnly ? "f free:ON" : "f free";
-		const footerText = `  ↑↓/jk PgUp/Dn navigate  •  n/i/o/c sort  •  ${filterHint}  •  Enter select  •  q/Esc  •  ${scrollInfo}`;
-		add(dim(footerText));
+		const sortDefs: [string, SortColumn][] = [
+			["n", "name"],
+			["i", "input"],
+			["o", "output"],
+			["c", "coding"],
+		];
+		const sortHints = sortDefs
+			.map(([key, col]) => (this.sortColumn === col ? accent(key) : dim(key)))
+			.join("/");
+		const filterHint = this.freeOnly ? accent("f") + dim(" free") : dim("f free");
+		add(
+			dim("  ↑↓/jk PgUp/Dn navigate  •  ") +
+				sortHints +
+				dim(" sort  •  ") +
+				filterHint +
+				dim(`  •  Enter select  •  q/Esc quit  •  ${scrollInfo}`),
+		);
 		add(dim("  " + "-".repeat(Math.min(width, rowWidth))));
 
 		this.cachedLines = lines;

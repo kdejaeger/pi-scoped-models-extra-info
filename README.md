@@ -51,13 +51,16 @@ Or use the keyboard shortcut: **`Alt+E`**
 |-----|--------|
 | `↑` / `k` | Move selection up |
 | `↓` / `j` | Move selection down |
-| `Home` / `Ctrl+A` | Jump to first model |
-| `End` / `Ctrl+E` | Jump to last model |
+| `Home` | Jump to first model |
+| `End` | Jump to last model |
+| `PageUp` | Page up through the model list |
+| `PageDown` | Page down through the model list |
 | `Enter` / `Space` | Switch to selected model |
 | `n` | Sort by model name |
 | `i` | Sort by input price |
 | `o` | Sort by output price |
 | `c` | Sort by coding index |
+| `f` | Toggle free-models-only filter |
 | `q` / `Esc` | Close table |
 
 ## Configuration
