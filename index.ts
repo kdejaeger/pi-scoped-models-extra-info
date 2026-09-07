@@ -704,7 +704,7 @@ function initAAData(): void {
 // and a line cache. It's fully self-contained — no external deps.
 //
 
-type SortColumn = "name" | "input" | "output" | "coding";
+type SortColumn = "model" | "input" | "output" | "coding";
 
 class ExtraInfoTable {
 	private allRows: ModelRow[];
@@ -739,8 +739,8 @@ class ExtraInfoTable {
 		}
 
 		// ── Sort shortcuts ──
-		if (matchesKey(data, "n")) {
-			this.sortBy("name");
+		if (matchesKey(data, "m")) {
+			this.sortBy("model");
 			return;
 		}
 		if (matchesKey(data, "i")) {
@@ -825,7 +825,7 @@ class ExtraInfoTable {
 		const cmpFn = (a: ModelRow, b: ModelRow) => {
 			let cmp: number;
 			switch (column) {
-				case "name":
+				case "model":
 					cmp = a.slug.localeCompare(b.slug);
 					break;
 				case "input":
@@ -921,7 +921,7 @@ class ExtraInfoTable {
 
 		interface HeaderCellDef { label: string; col: SortColumn | null; width: number; align: "left" | "right" }
 		const headerDefs: HeaderCellDef[] = [
-			{ label: "Model", col: "name", width: colSlug, align: "left" },
+			{ label: "Model", col: "model", width: colSlug, align: "left" },
 			{ label: "Input$", col: "input", width: colIn, align: "right" },
 			{ label: "Output$", col: "output", width: colOut, align: "right" },
 			{ label: "Context", col: null, width: colCtx, align: "right" },
@@ -986,7 +986,7 @@ class ExtraInfoTable {
 			scrollInfo = `${this.rows.length} models`;
 		}
 		const sortDefs: [string, SortColumn][] = [
-			["n", "name"],
+			["m", "model"],
 			["i", "input"],
 			["o", "output"],
 			["c", "coding"],

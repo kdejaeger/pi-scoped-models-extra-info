@@ -8,7 +8,7 @@
 
 - **Rich model table** — shows all your enabled (scoped) models in one view
 - **Columns**: model slug, input price, output price, context window, input modalities, thinking levels, and coding benchmarks
-- **Sortable** — press `n` (name), `i` (input price), `o` (output price), `c` (coding index)
+- **Sortable** — press `m` (model), `i` (input price), `o` (output price), `c` (coding index)
 - **Model switching** — press Enter on any row to switch to that model
 - **Keyboard navigation** — `↑↓/jk` to move, `Home`/`End` to jump, `q/Esc` to close
 - **Optional coding benchmarks** — per-thinking-level coding index from [Artificial Analysis](https://artificialanalysis.ai) (if `AA_API_KEY` is set)
@@ -56,7 +56,7 @@ Or use the keyboard shortcut: **`Alt+E`**
 | `PageUp` | Page up through the model list |
 | `PageDown` | Page down through the model list |
 | `Enter` / `Space` | Switch to selected model |
-| `n` | Sort by model name |
+| `m` | Sort by model |
 | `i` | Sort by input price |
 | `o` | Sort by output price |
 | `c` | Sort by coding index |
