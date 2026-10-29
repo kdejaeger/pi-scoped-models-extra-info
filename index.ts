@@ -3,15 +3,15 @@
  *
  * Renders an interactive table of your enabled (scoped) models with:
  * model slug, input price, output price, context window, input modalities,
- * thinking levels, and Artificial Analysis coding benchmarks.
+ * thinking levels, and the Artificial Analysis Intelligence Index.
  *
  * Press Enter on a row to switch to that model.
  * Shortcut: Alt+E
  *
  * Environment variables:
- *   AA_API_KEY  — Artificial Analysis API key for coding index column (optional).
+ *   AA_API_KEY  — Artificial Analysis API key for the AA index column (optional).
  *                 Get one at https://artificialanalysis.ai
- *                 Without it, the coding index column is omitted.
+ *                 Without it, the AA index column is omitted.
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
@@ -23,18 +23,25 @@ import { homedir } from "os";
 
 // ── Config ─────────────────────────────────────────────────────────────────
 //
-// The coding index column is powered by the Artificial Analysis API:
-//   https://artificialanalysis.ai/api/v2/data/llms/models
+// The AA index column is powered by the Artificial Analysis API:
+//   https://artificialanalysis.ai/api/v2/language/models/free
 //
-// When AA_API_KEY is set, the extension fetches AI coding benchmark scores
-// and caches them locally for 24 hours. Without the key, the coding column
-// is simply absent — everything else works the same.
+// When AA_API_KEY is set, the extension fetches Artificial Analysis
+// Intelligence Index scores and caches them locally for 24 hours. Without
+// the key, the AA index column is simply absent — everything else works
+// the same.
+//
+// Note: the legacy endpoint (/api/v2/data/llms/models) is retired and
+// returns 410 Gone. The coding index it exposed no longer exists — AA
+// deprecated it (`artificial_analysis_coding_index` is always null), so
+// the column now shows the Intelligence Index instead.
 //
 
 const AA_API_KEY = process.env.AA_API_KEY || "";
-const AA_API_URL = "https://artificialanalysis.ai/api/v2/data/llms/models";
+const AA_API_URL = "https://artificialanalysis.ai/api/v2/language/models/free";
+const AA_MAX_PAGES = 10; // pagination guard (200 models per page)
 const AA_CACHE_DIR = homedir() + "/.cache/pi/scoped-models-extra-info";
-const AA_CACHE_FILE = AA_CACHE_DIR + "/aa-models.json";
+const AA_CACHE_FILE = AA_CACHE_DIR + "/aa-models-v2.json";
 const AA_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 // ── Model data helpers ─────────────────────────────────────────────────────
@@ -44,8 +51,8 @@ interface ModelRow {
 	inputPrice: number | null;
 	outputPrice: number | null;
 	contextWindow: number | null;
-	codingIndex: string;
-	codingSortValue: number;
+	aaIndex: string;
+	aaSortValue: number;
 	thinkingLevels: string;
 	inputModalities: string;
 	provider: string;
@@ -215,11 +222,11 @@ function fitCell(text: string, width: number, align: "left" | "right" = "left"):
 	return align === "right" ? padVisibleLeft(fitted, width) : padVisibleRight(fitted, width);
 }
 
-// ── Artificial Analysis coding benchmark data ─────────────────────────────
+// ── Artificial Analysis Intelligence Index data ───────────────────────────
 //
 // The Artificial Analysis dataset has one entry per model+thinking-level
 // combination, e.g. "deepseek-v3-0324" or "kimi-k2-6-low". Each entry has
-// a coding index score (0-100) and the model creator info.
+// an Intelligence Index score (0-100) and the model creator info.
 //
 // We parse this into a Map<"provider/baseSlug", Map<thinkingLevel, score>>
 // then use a multi-strategy matching algorithm (see findLevelMap) to
@@ -235,7 +242,14 @@ interface AAModelEntry {
 	name: string;
 	slug: string;
 	model_creator: { name: string; slug?: string };
-	evaluations: { artificial_analysis_coding_index?: number };
+	evaluations: { artificial_analysis_intelligence_index?: number | null };
+}
+
+/** Envelope returned by /api/v2/language/models/free (one page). */
+interface AAResponse {
+	tier?: string;
+	pagination?: { page: number; page_size: number; total_pages: number; has_more: boolean };
+	data: AAModelEntry[];
 }
 
 /** Slug suffix → pi thinking level mapping (longest-first). */
@@ -255,8 +269,8 @@ const SUFFIX_TO_LEVEL: ReadonlyArray<{ suffix: string; level: string }> = [
 	{ suffix: "-max", level: "max" },
 ];
 
-/** Wider slots for coding column: "level(99.9)" per slot, +1 for spacing */
-const CODING_SLOTS: ReadonlyArray<[string, number]> = [
+/** Wider slots for the AA index column: "level(99.9)" per slot, +1 for spacing */
+const INDEX_SLOTS: ReadonlyArray<[string, number]> = [
 	["off", 10],
 	["minimal", 14],
 	["low", 10],
@@ -266,7 +280,7 @@ const CODING_SLOTS: ReadonlyArray<[string, number]> = [
 	["max", 12],
 ];
 
-/** per-model: baseKey → Map<thinkingLevel, codingIndex> */
+/** per-model: baseKey → Map<thinkingLevel, intelligenceIndex> */
 type AAModelLevels = Map<string, Map<string, number>>;
 
 let aaModelData: AAModelLevels | null = null;
@@ -312,7 +326,7 @@ function parseEntryLevel(slug: string, name: string): { baseSlug: string; level:
 function buildAAModelData(data: AAModelEntry[]): AAModelLevels {
 	const map: AAModelLevels = new Map();
 	for (const entry of data) {
-		const ci = entry.evaluations?.artificial_analysis_coding_index;
+		const ci = entry.evaluations?.artificial_analysis_intelligence_index;
 		if (ci == null) continue;
 		const parsed = parseEntryLevel(entry.slug, entry.name);
 		if (!parsed) continue;
@@ -333,7 +347,7 @@ function buildAAModelData(data: AAModelEntry[]): AAModelLevels {
 
 /**
  * Match a pi model (provider + ID) against the AA dataset to find its
- * per-thinking-level coding index scores.
+ * per-thinking-level Intelligence Index scores.
  *
  * The matching is a multi-strategy fallback chain because pi model IDs
  * and AA slugs use different naming conventions:
@@ -559,9 +573,9 @@ function findLevelMap(
 }
 
 /**
- * Format level→CI map as display string + sort value.
+ * Format level→index map as display string + sort value.
  *
- * The algorithm walks CODING_SLOTS from highest effort (max) down to
+ * The algorithm walks INDEX_SLOTS from highest effort (max) down to
  * lowest (off), carrying AA data from unsupported levels and depositing
  * it into the nearest lower slot pi supports.
  *
@@ -576,7 +590,7 @@ function findLevelMap(
  * honors carry values, so an xhigh-only model whose only AA entry is a
  * max score (GLM 5.2) sorts by the carried xhigh value the user sees.
  */
-function formatCodingData(
+function formatIndexData(
 	levelMap: Map<string, number>,
 	supportedLevels?: Set<string>,
 ): { display: string; sortValue: number } {
@@ -588,8 +602,8 @@ function formatCodingData(
 	// data is absent (e.g. xhigh-only model with max carry).
 	const inherited = new Map<string, number>();
 
-	for (let i = CODING_SLOTS.length - 1; i >= 0; i--) {
-		const [level, width] = CODING_SLOTS[i];
+	for (let i = INDEX_SLOTS.length - 1; i >= 0; i--) {
+		const [level, width] = INDEX_SLOTS[i];
 		const direct = levelMap.get(level);
 
 		if (supportedLevels && !supportedLevels.has(level)) {
@@ -657,17 +671,32 @@ function loadStaleCache(): void {
 async function fetchAAData(): Promise<void> {
 	if (!AA_API_KEY) return;
 	try {
-		const resp = await fetch(AA_API_URL, { headers: { "x-api-key": AA_API_KEY } });
-		if (!resp.ok) {
-			loadStaleCache();
-			return;
+		// The V2 list endpoint is paginated (200 models per page). Walk every
+		// page until has_more is false, then cache the flattened entries.
+		const entries: AAModelEntry[] = [];
+		let page: number | null = 1;
+		while (page != null) {
+			const url = page === 1 ? AA_API_URL : `${AA_API_URL}?page=${page}`;
+			const resp = await fetch(url, { headers: { "x-api-key": AA_API_KEY } });
+			if (!resp.ok) {
+				// All-or-nothing: a partial page set would silently drop models
+				// from the table, so prefer the previous cache instead.
+				loadStaleCache();
+				return;
+			}
+			const json = (await resp.json()) as AAResponse;
+			if (Array.isArray(json.data)) entries.push(...json.data);
+			const pagination = json.pagination;
+			const next = pagination && pagination.has_more ? pagination.page + 1 : null;
+			if (entries.length === 0) break; // defensive: nothing came back
+			// Guard against an unexpected/looping page count.
+			page = next != null && next <= AA_MAX_PAGES ? next : null;
 		}
-		const json = await resp.json();
-		const data = json.data as AAModelEntry[];
-		aaModelData = buildAAModelData(data);
+
+		aaModelData = buildAAModelData(entries);
 		try {
 			mkdirSync(AA_CACHE_DIR, { recursive: true });
-			writeFileSync(AA_CACHE_FILE, JSON.stringify(data));
+			writeFileSync(AA_CACHE_FILE, JSON.stringify(entries));
 		} catch { /* cache write failure is non-fatal */ }
 	} catch {
 		loadStaleCache();
@@ -704,7 +733,7 @@ function initAAData(): void {
 // and a line cache. It's fully self-contained — no external deps.
 //
 
-type SortColumn = "model" | "input" | "output" | "coding";
+type SortColumn = "model" | "input" | "output" | "index";
 
 class ExtraInfoTable {
 	private allRows: ModelRow[];
@@ -751,8 +780,8 @@ class ExtraInfoTable {
 			this.sortBy("output");
 			return;
 		}
-		if (matchesKey(data, "c")) {
-			this.sortBy("coding");
+		if (matchesKey(data, "a")) {
+			this.sortBy("index");
 			return;
 		}
 
@@ -839,8 +868,8 @@ class ExtraInfoTable {
 					if (y == null) return -1;
 					return (x - y) * dir;
 				}
-				case "coding":
-					cmp = a.codingSortValue - b.codingSortValue;
+				case "index":
+					cmp = a.aaSortValue - b.aaSortValue;
 					break;
 			}
 			return cmp * dir;
@@ -908,13 +937,13 @@ class ExtraInfoTable {
 		const colIn = 7;
 		const colOut = 8;
 		const colCtx = 7;
-		const colCode = 82;
+		const colIndex = 82;
 		const colThink = 38;
 		const colMod = 10;
 
 		// Build separator AFTER deciding column widths (so we can compute total)
 		const sep = " | ";
-		const rowWidth = colSlug + colIn + colOut + colCtx + colCode + colThink + colMod + sep.length * 6;
+		const rowWidth = colSlug + colIn + colOut + colCtx + colIndex + colThink + colMod + sep.length * 7;
 
 		// ── Header ──
 		add("");
@@ -927,7 +956,7 @@ class ExtraInfoTable {
 			{ label: "Context", col: null, width: colCtx, align: "right" },
 			{ label: "Modalities", col: null, width: colMod, align: "left" },
 			{ label: "Thinking", col: null, width: colThink, align: "left" },
-			{ label: "Coding index", col: "coding", width: colCode, align: "left" },
+			{ label: "AA index", col: "index", width: colIndex, align: "left" },
 		];
 
 		const headerCells = headerDefs.map(({ label, col, width, align }) => {
@@ -959,9 +988,9 @@ class ExtraInfoTable {
 				const ctxCell = fitCell(formatContextWindow(row.contextWindow), colCtx, "right");
 				const modCell = fitCell(row.inputModalities, colMod, "left");
 				const thinkCell = fitCell(row.thinkingLevels, colThink, "left");
-				const codeCell = fitCell(row.codingIndex, colCode, "left");
+				const indexCell = fitCell(row.aaIndex, colIndex, "left");
 
-				let plainRow = [slugCell, inCell, outCell, ctxCell, modCell, thinkCell, codeCell].join(sep);
+				let plainRow = [slugCell, inCell, outCell, ctxCell, modCell, thinkCell, indexCell].join(sep);
 				plainRow = truncateToWidth(plainRow, rowWidth);
 
 				if (isSelected) {
@@ -989,7 +1018,7 @@ class ExtraInfoTable {
 			["m", "model"],
 			["i", "input"],
 			["o", "output"],
-			["c", "coding"],
+			["a", "index"],
 		];
 		const sortHints = sortDefs
 			.map(([key, col]) => (this.sortColumn === col ? accent(key) : dim(key)))
@@ -1145,7 +1174,7 @@ async function showScopedModelsTable(
 //
 // Converts pi's raw model objects into ModelRow display records.
 // For each model it resolves thinking levels (with fallback for
-// proxied models), looks up AA coding benchmarks, and formats
+// proxied models), looks up AA Intelligence Index scores, and formats
 // prices/context into human-readable strings.
 // Rows are sorted by output price ascending by default.
 //
@@ -1167,15 +1196,15 @@ function buildRows(
 	for (const model of models) {
 		const levels = resolveThinkingLevels(model as any);
 
-		// Look up artificial analysis coding index (across all thinking levels)
-		let codingIndex = "—";
-		let codingSortValue = -1;
+		// Look up Artificial Analysis Intelligence Index (across all thinking levels)
+		let aaIndex = "—";
+		let aaSortValue = -1;
 		if (aaModelData) {
 			const levelMap = findLevelMap(model.provider, model.id, aaModelData);
 			if (levelMap) {
-				const fmt = formatCodingData(levelMap, new Set(levels));
-				codingIndex = fmt.display;
-				codingSortValue = fmt.sortValue;
+				const fmt = formatIndexData(levelMap, new Set(levels));
+				aaIndex = fmt.display;
+				aaSortValue = fmt.sortValue;
 			}
 		}
 
@@ -1184,8 +1213,8 @@ function buildRows(
 			inputPrice: model.cost?.input ?? null,
 			outputPrice: model.cost?.output ?? null,
 			contextWindow: model.contextWindow ?? null,
-			codingIndex,
-			codingSortValue,
+			aaIndex,
+			aaSortValue,
 			thinkingLevels: getThinkingLevelsLabel(model, levels),
 			inputModalities: getInputModalitiesLabel(model.input as string[] | null | undefined),
 			provider: model.provider,

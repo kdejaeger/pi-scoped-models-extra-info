@@ -1,17 +1,17 @@
 # pi-scoped-models-extra-info
 
-> Interactive table of your pi coding agent's scoped models — pricing, context window, thinking levels, modalities, and optional coding benchmarks.
+> Interactive table of your pi coding agent's scoped models — pricing, context window, thinking levels, modalities, and the optional Artificial Analysis Intelligence Index.
 
 ![Screenshot](screenshot.png)
 
 ## Features
 
 - **Rich model table** — shows all your enabled (scoped) models in one view
-- **Columns**: model slug, input price, output price, context window, input modalities, thinking levels, and coding benchmarks
-- **Sortable** — press `m` (model), `i` (input price), `o` (output price), `c` (coding index)
+- **Columns**: model slug, input price, output price, context window, input modalities, thinking levels, and the AA Intelligence Index
+- **Sortable** — press `m` (model), `i` (input price), `o` (output price), `a` (AA index)
 - **Model switching** — press Enter on any row to switch to that model
 - **Keyboard navigation** — `↑↓/jk` to move, `Home`/`End` to jump, `q/Esc` to close
-- **Optional coding benchmarks** — per-thinking-level coding index from [Artificial Analysis](https://artificialanalysis.ai) (if `AA_API_KEY` is set)
+- **Optional AA index** — per-thinking-level [Artificial Analysis](https://artificialanalysis.ai) Intelligence Index (if `AA_API_KEY` is set)
 
 ## Installation
 
@@ -59,15 +59,15 @@ Or use the keyboard shortcut: **`Alt+E`**
 | `m` | Sort by model |
 | `i` | Sort by input price |
 | `o` | Sort by output price |
-| `c` | Sort by coding index |
+| `a` | Sort by AA Intelligence Index |
 | `f` | Toggle free-models-only filter |
 | `q` / `Esc` | Close table |
 
 ## Configuration
 
-### Coding benchmarks (optional)
+### AA Intelligence Index (optional)
 
-The extension can show Artificial Analysis coding index scores per thinking level. To enable this:
+The extension can show Artificial Analysis Intelligence Index scores per thinking level. To enable this:
 
 1. Get an API key from [artificialanalysis.ai](https://artificialanalysis.ai)
 2. Set the environment variable before starting pi:
@@ -83,7 +83,9 @@ Or add to your `~/.bashrc` / `~/.zshrc`:
 export AA_API_KEY="aa_your_key_here"
 ```
 
-Without this variable, the extension works perfectly — it just omits the coding index column.
+Without this variable, the extension works perfectly — it just omits the AA index column.
+
+Data credit: index values are sourced from [Artificial Analysis](https://artificialanalysis.ai) and shown under their API terms. Free-tier keys only cover the `/language/models/free` endpoint, which publishes the Intelligence Index and the six capability indices — the old Coding Index was retired by AA.
 
 ### What it shows
 
